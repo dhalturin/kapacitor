@@ -1,6 +1,3 @@
-// kapacitor define mysql_connections -type batch -tick mysql_connections.tick -dbrp telegraf.telegraf_7d
-// kapacitor enable mysql_connections
-
 var conn_cur = batch
     |query('SELECT mean(threads_connected) AS "threads_connected" FROM "telegraf"."telegraf_7d"."mysql"')
         .period(60s)
@@ -31,5 +28,5 @@ conn_cur
         .crit(lambda: "maximum" > 1 AND "percent" > 80)
         .flapping(0.25, 0.5)
         .stateChangesOnly(5m)
-        .email().to('noc@propellerads.com')
+        .email().to('noreply@example.com')
         .slack()
