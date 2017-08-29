@@ -1,0 +1,35 @@
+// kapacitor define mysql_connections -type batch -tick mysql_connections.tick -dbrp telegraf.telegraf_7d
+// kapacitor enable mysql_connections
+
+var conn_cur = batch
+    |query('SELECT mean(threads_connected) AS "threads_connected" FROM "telegraf"."telegraf_7d"."mysql"')
+        .period(60s)
+        .every(60s)
+        .groupBy('host')
+        .fill(0)
+
+var conn_max = batch
+    |query('SELECT mean(max_user_connections) AS "max_user_connections" FROM "telegraf"."telegraf_7d"."mysql_variables"')
+        .period(60s)
+        .every(60s)
+        .groupBy('host')
+        .fill(1)
+
+conn_cur
+    |join(conn_max)
+        .as('conn_cur', 'conn_max')
+        .tolerance(1s)
+        .fill(0)
+        .streamName('mysql')
+    |eval(lambda: float("conn_cur.threads_connected") * 1.0, lambda: float("conn_max.max_user_connections") * 1.0, lambda: ("current" * 100.0) / "maximum")
+        .as('current', 'maximum', 'percent')
+    |alert()
+        .id('{{ index .Tags "host" }}/{{.Name}}')
+        .message('{{ .ID }} is {{ .Level }}. Maximum: {{ index .Fields "maximum" | printf "%.f"}}, current: {{ index .Fields "current" | printf "%.f"}}, percent usage: {{ index .Fields "percent" | printf "%.f"}}')
+        .info(lambda: "maximum" > 1 AND "percent" > 50)
+        .warn(lambda: "maximum" > 1 AND "percent" > 70)
+        .crit(lambda: "maximum" > 1 AND "percent" > 80)
+        .flapping(0.25, 0.5)
+        .stateChangesOnly(5m)
+        .email().to('noc@propellerads.com')
+        .slack()
